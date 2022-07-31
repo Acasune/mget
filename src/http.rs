@@ -1,9 +1,9 @@
 ﻿use std::collections::BTreeMap;
 use std::fmt;
 use std::net::IpAddr;
-use std::os::unix::io::AsRawFd;
+use std::os::unix::prelude::AsRawFd;
 
-use smoltcp::iface::{EthernetInterfaceBuilder, NeigborCache, Routes};
+use smoltcp::iface::{EthernetInterfaceBuilder, NeighborCache, Routes};
 use smoltcp::phy::{wait as phy_wait, TapInterface};
 use smoltcp::socket::{SocketSet, TcpSocket, TcpSocketBuffer};
 use smoltcp::time::Instant;
@@ -11,7 +11,7 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 use url::Url;
 
 #[derive(Debug)]
-enum HpptState {
+enum HttpState {
     Connect,
     Request,
     Response,
@@ -21,7 +21,7 @@ enum HpptState {
 pub enum UpstreamError {
     Network(smoltcp::Error),
     InvalidUrl,
-    COntent(std::str::Utf8Error),
+    Content(std::str::Utf8Error),
 }
 
 impl fmt::Display for UpstreamError {
@@ -36,7 +36,7 @@ impl From<smoltcp::Error> for UpstreamError {
     }
 }
 
-impl From<std::std::Utf8Error> for UpstreamError {
+impl From<std::str::Utf8Error> for UpstreamError {
     fn from(error: std::str::Utf8Error) -> Self {
         UpstreamError::Content(error)
     }
@@ -49,7 +49,7 @@ fn random_port() -> u16 {
 pub fn get(
     tap: TapInterface,
     mac: EthernetAddress,
-    addr: IpAddress,
+    addr: IpAddr,
     url: Url,
 ) -> Result<(), UpstreamError> {
     let domain_name = url.host_str().ok_or(UpstreamError::InvalidUrl)?;
@@ -64,7 +64,7 @@ pub fn get(
 
     let fd = tap.as_raw_fd();
     let mut routes = Routes::new(BTreeMap::new());
-    let default_gateway = Ipv4Address::new(192, 168, 42, 1);
+    let default_gateway = Ipv4Address::new(192, 168, 42, 100);
     routes.add_default_ipv4_route(default_gateway).unwrap();
     let mut iface = EthernetInterfaceBuilder::new(tap)
         .ethernet_addr(mac)
@@ -77,16 +77,16 @@ pub fn get(
     let tcp_handle = sockets.add(tcp_socket);
 
     let http_header = format!(
-        "Get {} HTTP/1.0\r\nHost: {}\r\nConnection: close\r\n\r\n",
+        "GET {} HTTP/1.0\r\nHost: {}\r\nConnection: close\r\n\r\n",
         url.path(),
         domain_name,
     );
 
     let mut state = HttpState::Connect;
     'http: loop {
-        let timestamp = Instant::new();
+        let timestamp = Instant::now();
         match iface.poll(&mut sockets, timestamp) {
-            OK(_) => {}
+            Ok(_) => {}
             Err(smoltcp::Error::Unrecognized) => {}
             Err(e) => {
                 eprintln!("error: {:?}", e);
@@ -105,7 +105,7 @@ pub fn get(
 
                 HttpState::Request if socket.may_send() => {
                     eprintln!("sending request");
-                    socket.send_slice(htto_header.as_ref())?;
+                    socket.send_slice(http_header.as_ref())?;
                     HttpState::Response
                 }
 
@@ -113,7 +113,7 @@ pub fn get(
                     socket.recv(|raw_data| {
                         let output = String::from_utf8_lossy(raw_data);
                         println!("{}", output);
-                        (raw_data.len(), ())?
+                        (raw_data.len(), ())
                     })?;
                     HttpState::Response
                 }
@@ -128,5 +128,6 @@ pub fn get(
 
         phy_wait(fd, iface.poll_delay(&sockets, timestamp)).expect("wait error");
     }
+
     Ok(())
 }

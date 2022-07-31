@@ -2,11 +2,11 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 
-use trust_dns::op::{Message, Messagetype, OpCode, Query};
+use trust_dns::op::{Message, MessageType, OpCode, Query};
 use trust_dns::proto::error::ProtoError;
+use trust_dns::rr::domain::Name;
 use trust_dns::rr::record_type::RecordType;
 use trust_dns::serialize::binary::*;
-use trust_dnt::rr::dmain::Name;
 
 fn message_id() -> u16 {
     let candidate = rand::random();
@@ -27,7 +27,7 @@ pub enum DnsError {
     Receving(std::io::Error),
 }
 
-impl std::fmt::Display for DnxError {
+impl std::fmt::Display for DnsError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{:#?}", self)
     }
@@ -39,7 +39,7 @@ pub fn resolve(
     dns_server_address: &str,
     domain_name: &str,
 ) -> Result<Option<std::net::IpAddr>, Box<dyn Error>> {
-    Name::from_ascii(domain_name).map_err(DnsError::ParseDomainName)?;
+    let domain_name = Name::from_ascii(domain_name).map_err(DnsError::ParseDomainName)?;
 
     let dns_server_address = format!("{}:53", dns_server_address);
     let dns_server: SocketAddr = dns_server_address
@@ -50,17 +50,17 @@ pub fn resolve(
     let mut response_buffer: Vec<u8> = vec![0; 512];
 
     let mut request = Message::new();
-    request.add_query(Wuery::query(domain_name, RecordType::A));
+    request.add_query(Query::query(domain_name, RecordType::A));
 
     request
-        .set_id(massage_id())
-        .set_message_type(Messagetype::Query)
+        .set_id(message_id())
+        .set_message_type(MessageType::Query)
         .set_op_code(OpCode::Query)
         .set_recursion_desired(true);
 
     let localhost = UdpSocket::bind("0.0.0.0:0").map_err(DnsError::Network)?;
 
-    let timeout = Duration::From_secs(5);
+    let timeout = Duration::from_secs(5);
     localhost
         .set_read_timeout(Some(timeout))
         .map_err(DnsError::Network)?;
