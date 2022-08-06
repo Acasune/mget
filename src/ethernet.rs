@@ -22,9 +22,9 @@ impl Display for MacAddress {
 impl MacAddress {
     pub fn new() -> MacAddress {
         let mut octets: [u8; 6] = [0; 6];
-        rand::thread_rng().fill_bytes(&mut octets);
-        octets[0] |= 0b_0000_0010; // Set 1 for the local address bits
-        octets[0] &= 0b_1111_1110; // Set 0 for the uni cast bits
+        rand::thread_rng().fill_bytes(&mut octets); // <1>
+        octets[0] |= 0b_0000_0010; // <2>
+        octets[0] &= 0b_1111_1110; // <3>
         MacAddress { 0: octets }
     }
 }
